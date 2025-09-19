@@ -144,4 +144,107 @@ constexpr auto bar(const T& val)
 
 # chapter 11 - fold expressions
 
+> fold expressions compute result of using a binary operator over all the
+> arguments of a parameter pack (ellipsis)
 
+```cpp
+template<typename... T>
+auto unary_left_fold(T... args) {
+  return (... + args); // ((arg1 + arg2) + arg3) ...
+}
+
+auto unary_right_fold(T... args) {
+  return (args + ...); // (arg1 + (arg2 + arg3)) ...
+}
+
+left_fold(std::string("hello"), "world", "!");  // OK
+left_fold("hello", "world", std::string("!"));  // ERROR
+right_fold(std::string("hello"), "world", "!"); // ERROR
+```
+
+TODO binary fold syntax p. 110
+
+- used as an iterative recursion
+- when used with an empty parameter pack:
+	- with `&&`: the result is true
+	- with `||`: the result is false
+	- with `,`-operator: the result is `void()`
+	- with all other operators: ill-formed
+
+---
+
+# chapter 12 - string literals as template parameters
+
+wtf
+
+---
+
+# chapter 13 - placeholders like `auto` as non-type template parameter types
+
+```cpp
+template<auto N> class S {};
+
+S<42> s1;
+S<'a'> s2;
+
+// partial specialization
+template<int N> class S<N> {};
+
+// example:
+template<typename auto v>
+struct constant {
+  static constexpr auto value = v;
+};
+// instead of
+template<typename T, T v>
+struct constant {
+  static constexpr T value = v;
+};
+```
+
+- support CTAD, cv-qualifiers, variadic templates
+
+## `decltype(auto)`
+
+- `decltype(expression)` yields:
+	- `type` for a prvalue (e.g., temporaries)
+	- `type&` for an lvalue (e.g., objects with names)
+	- `type&&` for an xvalue (e.g., objects marked with `std::move()`)
+
+> so the deduced type via `decltype(auto)` might be one of those types with
+> additional side effects
+
+### example
+
+```cpp
+#include <iostream>
+
+template<decltype(auto) N>
+struct S {
+  void printN() const { std::cout << "N: " << N << '\n'; }
+};
+
+static const int c = 42;
+static int v = 42;
+
+int main()
+{
+  S<c> s1;     // deduces N as const int 42
+  S<(c)> s2;   // deduces N as const int& referring to c!
+  S<(v)> s3;   // deduces N as int& referring to v!
+  v = 77;
+  s3.printN(); // prints: N: 77
+}
+```
+
+---
+
+# chapter 14 - extended `using` declarations
+
+```cpp
+using std::cin, std::cos, std::tan; // instaed of three different ones
+```
+
+## variadic using declarations
+
+i wonder when this will be useful...
