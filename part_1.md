@@ -192,16 +192,176 @@ auto squared1 = [](auto val) constexpr { return val*val; };
 constexpr auto squared2 = [](auto val) { return val*val; };
 ```
 
-If only the lambda (call-operator) is `constexpr`, it can be used at compile
-time, but its belonging object (`squared1`) might be initialized at run time,
-which means that some problems might occur if the static initialization order
-matters (e.g., causing the *static initialization order fiasco*). If the
-(closure) object initialized by the lambda is `constexpr`, the object is
-initialized when the program starts but the lambda might still be a lambda that
-can only be used at run time (e.g., using static variables).
+> If only the lambda(call-operator) is `constexpr`, it can be used at compile
+> time, but its belonging object(`squared1`) might be initialized at run time,
+> which means that some problems might occur if the static initialization order
+> matters (e.g., causing the *static initialization order fiasco*). If the
+> (closure) object initialized by the lambda is `constexpr`, the object is
+> initialized when the program starts but the lambda might still be a lambda
+> that can only be used at run time (e.g., using static variables).
 
 Therefore, you might consider declaring:
 
 ```cpp
 constexpr auto squared = [](auto val) constexpr { return val*val; };
+```
+
+## `this` capture
+
+- `this` syntax to reference the object (potential lifetime issue)
+- `*this` syntax to copy the object into the lambda:
+
+```cpp
+class Data {
+private:
+  std::string name;
+public:
+  Data(const std::string& s) : name(s) { }
+
+  auto startThreadWithCopyOfThis() const {
+    using namespace std::literals;
+    std::thread t([*this] {
+      std::this_thread::sleep_for(3s);
+      std::cout << name << '\n';
+    });
+    return t;
+  }
+};
+```
+
+- capture by `const` reference: `[&var = std::as_const(ptr)]`
+
+---
+
+# chapter 7 - attributes
+
+- `[nodiscard]`:
+	- warning for discarded return values
+	- `(void)` to disable
+- `[maybe_unused]`: self-explanatory
+- `[fallthrough]`: for switch cases which intent to fall through duh
+- `[deprecated]`: self-explanatory
+
+---
+
+# chapter 8 - other features
+
+- nested namespaces: `namespace A::B::C`; no `inline` support yet
+
+## defined expression eval order
+
+Previously UBs:
+
+```cpp
+s.replace(0,8,"")
+	.replace(s.find("even"),4,"sometimes")
+	.replace(s.find("you don't"),9,"I");
+```
+
+> `find()` might be executed at **any time** while the whole statement is being
+> processed
+
+```cpp
+std::cout << f() << g() << h();
+```
+
+> `f()`, `g()` and `h()` might be called in **any order**
+
+```cpp
+i = 0;
+std::cout << ++i << ' ' << --i << '\n';
+```
+
+> evaluated at **any order**
+
+Now the evaluation order is guarantees for *some* operators:
+
+- left to right:
+	- `e1 [ e2 ]`
+	- `e1 . e2`
+	- `e1 .* e2`
+	- `e1 ->* e2`
+	- `e1 << e2`
+	- `e1 >> e2`
+- right to left:
+	- `e2 = e1`
+	- `e2 += e1`
+	- `e2 *= e1`
+
+## relaxed enum init
+
+```cpp
+enum MyInt : char {};
+MyInt i1{42};    // OK since C++17 (ERROR before C++17)
+MyInt i2 = 42;   // still ERROR
+MyInt i3(42);    // still ERROR
+MyInt i4 = {42}; // still ERROR
+
+// enum class Weekday : char/int { mon, tue, wed, thu, fri, sat, sun };
+enum class Weekday { mon, tue, wed, thu, fri, sat, sun };
+Weekday s1{0};    // OK since C++17 (ERROR before C++17)
+Weekday s2 = 0;   // still ERROR
+Weekday s3(0);    // still ERROR
+Weekday s4 = {0}; // still ERROR
+```
+
+## fixed **direct** list init with `auto`
+
+- `auto a{42}`:
+	- previously: is an `std::initializer_list`
+	- now: an `int`
+- `auto a{1, 2, 3}`:
+	- previously: is an `std::initializer_list`
+	- now: ERROR
+
+### note:
+
+- direct initialization: `auto a{...};`
+- copy initialization: `auto a = {...};`
+
+## hexadecimal floats
+
+Not interested for now
+
+## UTF-8 character literals
+
+- `u8` prefix also supported for char literals now: `auto c = u8'6';`
+- `char c = u8'ö';` not allowed: `ö` is two bytes in size
+- `u8` for single-byte US-ASCII and UTF-8
+- `u` for two-byte UTF-16
+- `U` for four-byte UTF-32
+- `L` for wide chars without specific encoding (either 2 or 4 bytes)
+
+## exception specification as part of the type
+
+- `noexcept` functions are now a different type but it still can't be used for
+  overloading:
+	- `noexcept` function pointer can't point to "throwable" functions
+	- must be represented using a different template parameter
+- conditional `noexcept`:
+	- `void f() noexcept(sizeof(int) < 4);`: either `noexcept` or not depending
+	  on the predicate
+- `throw()` specifier is now deprecated
+
+## `static_assert`
+
+> Jason Turner's fav
+
+## preprocessor condition `__has_include`
+
+```cpp
+#if __has_include(<filesystem>)
+# include <filesystem>
+# define HAS_FILESYSTEM 1
+#elif __has_include(<experimental/filesystem>)
+# include <experimental/filesystem>
+# define HAS_FILESYSTEM 1
+# define FILESYSTEM_IS_EXPERIMENTAL 1
+#elif __has_include("filesystem.hpp")
+# include "filesystem.hpp"
+# define HAS_FILESYSTEM 1
+# define FILESYSTEM_IS_EXPERIMENTAL 1
+#else
+# define HAS_FILESYSTEM 0
+#endif
 ```
