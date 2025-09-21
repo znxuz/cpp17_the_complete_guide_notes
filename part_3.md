@@ -184,3 +184,248 @@ int main()
 ---
 
 # chapter 17 - `std::any`
+
+TODO find out why this thing even exists - what is it good for?
+
+---
+
+# chapter 18 - `std::byte`
+
+- represents all the values a byte can hold with no numeric or character
+  representation -> only bit-wise
+- operations:
+	- assignment
+	- comparison
+	- bit-operations
+	- `std::to_integer<T>()`
+	- `sizeof() == 1`
+
+```cpp
+#include <cstddef> // for std::byte
+
+std::byte b1{0x3F};
+std::byte b2{0b1111'0000};
+std::byte b3[4]{b1, b2, std::byte{1}}; // byte[3] default-initialized to 0
+
+if (b1 == b3[0])
+  b1 <<= 1;
+
+std::cout << std::to_integer<int>(b1) << '\n'; // prints 126
+```
+
+Implemented as an enumeration type based on `unsigned char`, thus no
+assignment/copy initialization, implicit conversion.
+
+```cpp
+// std::byte b2(42);    // ERROR
+// std::byte b3 = 42;   // ERROR
+// std::byte b4 = {42}; // ERROR
+
+// std::byte b5[] {1};  // ERROR
+```
+
+## as integral value
+
+```cpp
+std::to_integer<int>(b);
+std::to_integer<bool>(b);
+```
+
+## as binary representation values
+
+Convert to `std::bitset<std::numeric_limits<unsigned char>::digits>` to output
+as a sequence of bits:
+
+```cpp
+using ByteBitset = std::bitset<std::numeric_limits<unsigned char>::digits>;
+
+std::byte b1{42};
+std::cout << ByteBitset(b1);
+
+std::string s = ByteBitset(b1).to_string();
+
+#include <charconv>
+char str[100];
+std::to_chars_result res = std::to_chars(str, str + sizeof(str) - 1,
+                                         std::to_integer<int>b1, 2);
+*res.ptr = '\0'; // ensure a trailing null char
+```
+
+## read into `std::byte`
+
+```cpp
+std::istream& operator>> (std::istream& strm, std::byte& b)
+{
+  // read into a bitset:
+  std::bitset<std::numeric_limits<unsigned char>::digits> bs;
+  strm >> bs;
+  // without failure, convert to std::byte:
+  if (!std::cin.fail())
+    b = static_cast<std::byte>(bs.to_ulong()); // because no narrowing w/ enum
+  return strm;
+}
+```
+
+```cpp
+#include <charconv>
+
+const char* str = "101001";
+int value;
+std::from_char_result res = std::from_chars(str, str + std::strlen(str),
+                                            value, 2);
+```
+
+---
+
+# chapter 19 - string views
+
+> to reiterate: it's just a dumb pointer to a allocated string, so always keep
+> in mind that it has to point to a valid string / string literal.
+
+## why `std::string_view` is better than `const std::string&`
+
+- `std::string_view` doesn't allocate: if the passed argument is a `const
+  char*`, it would allocate for a `std::string` to "convert" to it
+- get substrings from `std::string_view` without copy:
+	- `substr()`
+	- `remove_prefix/suffix()`
+
+## if you want your `string_view` to dangle
+
+- take `string_view` as a ctor argument: `string_view` would then bind to a
+  moved rvalue reference of a `string` passed as the ctor argument
+- return a `string_view` from a getter: if invoked on a temporarily created
+  object, the underlying `string` object is destroyed after the getter returns
+
+> do not let it dangle
+
+---
+
+# chapter 20 - the filesystem library
+
+## file attributes
+
+- `auto p = std::filesystem::path{...};`
+- `exists(p)`
+- `bool is_regular_file(p)`
+- `bool is_directory(p)`
+- `std::uintmax_t file_size(p)`
+
+> due to ADL, there is no need to qualify the calls with `std::filesystem::`,
+> because they take an argument that has a type of the same namespace which they
+> are from.
+
+> But its better to always qualify because not qualifying the calls might
+> sometimes result in UB: `remove()` calls the C function instead of from
+> `std::filesystme`
+
+### `switch` over the fs types
+
+```cpp
+namespace fs = std::filesystem;
+switch (fs::path p{argv[1]}; status(p).type()) {
+  case fs::file_type::not_found:
+    std::cout << "path \"" << p.string() << "\" does not exist\n";
+  break;
+  case fs::file_type::regular:
+    std::cout << '"' << p.string() << "\" exists with "
+              << file_size(p) << " bytes\n";
+  break;
+  case fs::file_type::directory:
+    std::cout << '"' << p.string() << "\" is a directory containing:\n";
+    for (const auto& e : std::filesystem::directory_iterator{p}) {
+      std::cout << " " << e.path().string() << '\n';
+    }
+  break;
+  default:
+    std::cout << '"' << p.string() << "\" is a special file\n";
+  break;
+}
+```
+
+## iterating through a directory
+
+```cpp
+std::cout << "iterating through " << p << '\n';
+for (const auto& e : std::filesystem::directory_iterator{p})
+  std::cout << e.path() << '\n';
+```
+
+## create files of different types
+
+```cpp
+namespace fs = std::filesystem;
+try {
+  fs::path testDir{"tmp/test"};
+  create_directories(testDir); // create directories tmp/test/
+  auto testFile = testDir / "data.txt"; // create file tmp/test/data.txt
+  std::ofstream dataFile{testFile};
+  if (!dataFile) {
+    std::cerr << "OOPS, can't open \"" << testFile.string() << "\"\n";
+    std::exit(EXIT_FAILURE);
+  }
+  dataFile << "The answer is 42\n";
+
+  // create symbolic link from tmp/slink/ to tmp/test/:
+  create_directory_symlink("test", testDir.parent_path() / "slink");
+}
+catch (const fs::filesystem_error& e) {
+  std::cerr << "EXCEPTION: " << e.what() << '\n';
+  std::cerr << "path1: \"" << e.path1().string() << "\"\n";
+}
+
+std::cout << fs::current_path().string() << ":\n"; // recursively list all files
+
+auto iterOpts{fs::directory_options::follow_directory_symlink};
+for (const auto& e : fs::recursive_directory_iterator(".", iterOpts))
+  std::cout << " " << e.path().lexically_normal().string() << '\n';
+```
+
+- `/`-operator overload paired with the corresponding constructor automatically
+  creates/opens a file
+
+## error handling
+
+```cpp
+try {
+} catch (cont fs::filesystem_error& e) {
+  std::println(std::cerr, "{}", e.what());
+}
+```
+
+## path normalization
+
+- single directory separator
+- current directory shorthand `.` not used, unless its the whole path
+- file name doesn't contain `..`, unless they are at the beginning of a relative
+  path
+- path name only ends with a directory separator, if the trailing name is a
+  directory which is other than `.` or `..`
+
+The filesystem library provides:
+
+- **lexical** normalization:
+	- **not** taking the filesystem into account: member functions, which are
+	  thus relative cheap to run, are pure lexical operations
+- **filesystem-dependent** normalization
+	- free-standing functions, which are filesystem-dependent, are relative
+	  expensive because syscalls are involved
+
+## path creation
+
+| init                  | effect                   |
+|-----------------------|--------------------------|
+| path{charseq}         | from a char sequence     |
+| path{begin, end}      | from a range             |
+| u8path(u8string)      | from a UTF-8 string      |
+| current_path()        | from the cwd             |
+| temp_directory_path() | path for temporary files |
+
+- a char sequence:
+	- string
+	- string_view
+	- array of chars / input iterator(pointer) to chars ending with the null
+	  terminator
+
+## path inspection/API
+
