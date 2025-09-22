@@ -307,9 +307,13 @@ std::from_char_result res = std::from_chars(str, str + std::strlen(str),
 
 - `auto p = std::filesystem::path{...};`
 - `exists(p)`
-- `bool is_regular_file(p)`
-- `bool is_directory(p)`
-- `std::uintmax_t file_size(p)`
+- `is_(regular_file/directory/symlink/other/block_file/character_file/fifo/socket/empty)(p)`
+	- follows symlink
+- `file_size(p)`
+- `hard_link_count(p)`
+- `last_write_time(p)`
+- `(symlink_)status(p)`: return the (symlink-followed, )cached file type and
+  permissions
 
 > due to ADL, there is no need to qualify the calls with `std::filesystem::`,
 > because they take an argument that has a type of the same namespace which they
@@ -317,9 +321,29 @@ std::from_char_result res = std::from_chars(str, str + std::strlen(str),
 
 > But its better to always qualify because not qualifying the calls might
 > sometimes result in UB: `remove()` calls the C function instead of from
-> `std::filesystme`
+> `std::filesystem`
 
-### `switch` over the fs types
+## file permissions
+
+- `file_status.permissions()`: returns an enumeration type
+- `std::filesystem::perms::`:
+
+## create/delete files
+
+- `create_(directory/directories)(p)`
+- `create_directory(p, attr_path)`
+- `create_(hard_link/symlink/directory_symlink)(to, new)`
+- `copy(from, to)`
+- `copy(from, to, opts)`
+- `copy_file(from, to)`
+- `copy_file(from, to, opts)`
+- `copy_symlink(from, to)`
+- `remove(p)`
+- `remove_all(p)`
+
+- for more details -> just check out cppref
+
+## example: `switch` over the fs types
 
 ```cpp
 namespace fs = std::filesystem;
@@ -343,7 +367,7 @@ switch (fs::path p{argv[1]}; status(p).type()) {
 }
 ```
 
-## iterating through a directory
+## example: iterating through a directory
 
 ```cpp
 std::cout << "iterating through " << p << '\n';
@@ -351,7 +375,7 @@ for (const auto& e : std::filesystem::directory_iterator{p})
   std::cout << e.path() << '\n';
 ```
 
-## create files of different types
+## example: create files of different types
 
 ```cpp
 namespace fs = std::filesystem;
@@ -429,3 +453,50 @@ The filesystem library provides:
 
 ## path inspection/API
 
+- `p.empty()`
+- `p.is_absolute()`
+- `p.is_relative()`
+- `p.begin()`
+- `p.end()`
+- `p.(has_)filename()`
+- `p.(has_)stem()`
+- `p.(has_)extension()`
+- `p.(has_)root_name()`
+- `p.(has_)root_directory()`
+- `p.(has_)root_path()`
+- `p.(has_)parent_path()`
+- `p.(has_)relative_path()`
+
+## path I/O and conversions
+
+- `<<` and `>>` stream operator overload as/from quoted string
+- `p.(w/u8/u16/u32)string(<...>)()`
+- `p.lexically_normal()`: yields normalized path
+- `p.lexically_(relative/proximate)()`: yields path from `p2` to p
+
+## path modifications
+
+- `=` assignment operator overload
+- `/`, operator, `p.append(sub)`: appends a *sub(no root)* path with a separator
+- `+` operator, `p.concat(str)`: concat a string to the path w/o a separator
+- `p.(remove/replace)_filename((repl))`
+- `p.(remove/replace)_extension((repl))`
+- `p.clear()`: makes the path empty; analog to `.clear()` method from the stl
+- `swap()` member and free function
+- `p.make_preferred()`: TODO
+
+## path comparison
+
+Best practice with taking the filesystem into account and respecting symlinks:
+
+```cpp
+bool pathsAreEqual(const std::filesystem::path& p1,
+                   const std::filesystem::path& p2) {
+  return exists(p1) && exists(p2)
+        ? equivalent(p1, p2)
+        : p1.lexically_normal() == p2.lexically_normal();
+}
+```
+
+- using `equivalent()` requires checking if the paths are valid
+- then compare the **normalized** paths lexically
